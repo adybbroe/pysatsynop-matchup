@@ -53,6 +53,7 @@ time_thr_swath = timedelta(seconds=(1800 + 100 * 60))
 # ROOTDIR = "/media/Elements/data/pps_v2014_val"
 # ROOTDIR = "/local_disk/data/pps_test"
 ROOTDIR = "/nobackup/smhid11/sm_ninha/pps/data_osisaf"
+ROOTDIR = "/run/media/a000680/Elements/data/pps_v2014_val"
 # ROOTDIR = "/nobackup/smhid11/sm_adam/pps/data_osisaf"
 # ROOTDIR = "/home/a000680/data/pps_val_v2014"
 
@@ -423,26 +424,25 @@ def get_scenes(tstart, tend, satellite='npp'):
     while tslot < tend:
         # Find the cloudtype:
         matchstr = os.path.join(ROOTDIR,
-                                "export/%s/S_NWC_CT_%s_?????_%sT*_*Z.h5" % (tslot.strftime('%Y%m'),
-                                                                            satellite, tslot.strftime('%Y%m%d')))
+                                "export/S_NWC_CT_%s_?????_%sT*_*Z.h5" % (satellite, tslot.strftime('%Y%m%d')))
         cty_files_aday = glob(matchstr)
         for ctyfile in cty_files_aday:
             fname = os.path.basename(ctyfile).replace('_CT_',
                                                       '_%s_' % instr)
-            dirname = os.path.dirname(ctyfile).replace('export/%s' % tslot.strftime('%Y%m'),
-                                                       'import/PPS_data/remapped/%s' % tslot.strftime('%Y%m'))
+            dirname = os.path.dirname(ctyfile).replace('export',
+                                                       'import/PPS_data/remapped')
             viirsfile = os.path.join(dirname, fname)
 
             fname = os.path.basename(ctyfile).replace('_CT_',
                                                       '_sunsatangles_')
-            dirname = os.path.dirname(ctyfile).replace('export/%s' % tslot.strftime('%Y%m'),
-                                                       'import/ANC_data/remapped/%s' % tslot.strftime('%Y%m'))
+            dirname = os.path.dirname(ctyfile).replace('export',
+                                                       'import/ANC_data/remapped')
             angles_file = os.path.join(dirname, fname)
 
             fname = os.path.basename(ctyfile).replace('_CT_',
                                                       '_nwp_ciwv_')
-            dirname = os.path.dirname(ctyfile).replace('export/%s' % tslot.strftime('%Y%m'),
-                                                       'import/NWP_data/remapped/%s' % tslot.strftime('%Y%m'))
+            dirname = os.path.dirname(ctyfile).replace('export',
+                                                       'import/NWP_data/remapped')
             ciwv_file = os.path.join(dirname, fname)
             fname = os.path.basename(ctyfile).replace('_CT_',
                                                       '_nwp_tsur_')
@@ -471,7 +471,7 @@ def get_radvaldata(filename):
 if __name__ == "__main__":
 
     starttime = datetime(2012, 5, 1, 0, 0)
-    endtime = datetime(2014, 12, 1, 0, 0)
+    endtime = datetime(2014, 6, 1, 0, 0)
     scenes = []
     scenes = get_scenes(starttime, endtime, 'npp')
     scenes = scenes + get_scenes(starttime, endtime, 'noaa18')
