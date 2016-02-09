@@ -52,8 +52,9 @@ time_thr_swath = timedelta(seconds=(1800 + 100 * 60))
 
 # ROOTDIR = "/media/Elements/data/pps_v2014_val"
 # ROOTDIR = "/local_disk/data/pps_test"
-# ROOTDIR = "/nobackup/smhid11/sm_ninha/pps/data_osisaf"
-ROOTDIR = "/nobackup/smhid11/sm_adam/pps/data_osisaf"
+ROOTDIR = "/nobackup/smhid11/sm_ninha/pps/data_osisaf"
+# ROOTDIR = "/nobackup/smhid11/sm_adam/pps/data_osisaf"
+# ROOTDIR = "/home/a000680/data/pps_val_v2014"
 
 SYNOP_DATADIR = "./DataFromDwd"
 # SYNOP_DATADIR = "/data/proj6/saf/adybbroe/satellite_synop_matchup/DataFromDwd"
@@ -64,9 +65,9 @@ OUTPUT_DIR = "./data"
 INSTRUMENT = {'npp': 'viirs', 'noaa18': 'avhrr', 'noaa19': 'avhrr'}
 ANGLE_NAMES = ['SUNZ', 'SATZ', 'SSAZD']
 SAT_FIELDS = {}
-SAT_FIELDS['viirs'] = ['sunz', 'satz', 'ssazd', 'm05',
+SAT_FIELDS['viirs'] = ['sunz', 'satz', 'ssazd', 'ciwv', 'tsur', 'm05',
                        'm07', 'm10', 'm12', 'm14', 'm15', 'm16']
-SAT_FIELDS['avhrr'] = ['sunz', 'satz', 'ssazd', '1',
+SAT_FIELDS['avhrr'] = ['sunz', 'satz', 'ssazd', 'cwiv', 'tsur', '1',
                        '2', '3a', '3b', 'dummy', '4', '5']
 
 
@@ -81,6 +82,7 @@ class SatellitePointData(object):
         self.cloudcover = 0
         self.cloudtype = 0
         self.channels = {}
+        self.nwp = {}
         self.angles = {}
 
     def __str__(self):
@@ -103,7 +105,7 @@ class SatellitePointData(object):
         return retv
 
 
-def get_satellite_data(imagerdata, sunsat_angles, point):
+def get_satellite_data(point, imagerdata, sunsat_angles, nwp_ciwv, nwp_tsur):
     """Get the instrument data and viewing angles"""
 
     retv = {}
@@ -119,6 +121,26 @@ def get_satellite_data(imagerdata, sunsat_angles, point):
                         retv[dname] = value * info['gain'] + info['offset']
                     else:
                         retv[dname] = -999
+
+    if hasattr(nwp_ciwv, 'ciwv'):
+        obj = getattr(nwp_ciwv, 'ciwv')
+        info = getattr(obj, 'info')
+        value = getattr(obj, 'data')[point[0], point[1]]
+        dname = 'ciwv'
+        if value != info['nodata']:
+            retv[dname] = value * info['gain'] + info['intercept']
+        else:
+            retv[dname] = -999
+
+    if nwp_tsur and hasattr(nwp_tsur, 'tsur'):
+        obj = getattr(nwp_tsur, 'tsur')
+        info = getattr(obj, 'info')
+        value = getattr(obj, 'data')[point[0], point[1]]
+        dname = 'tsur'
+        if value != info['nodata']:
+            retv[dname] = value * info['gain'] + info['intercept']
+        else:
+            retv[dname] = -999
 
     for idx in range(1, 8):
         if hasattr(imagerdata, 'image%.1d' % idx):
@@ -208,10 +230,15 @@ class Matchup(object):
 
     """Satellite data and surface/point measurement collocation"""
 
-    def __init__(self, ctype, avhrr, angles):
+    def __init__(self, ctype, avhrr, angles, ciwv, **kwargs):
         self.ctype = ctype
         self.avhrr = avhrr
         self.angles = angles
+        self.ciwv = ciwv
+        if 'tsur' in kwargs:
+            self.tsur = kwargs['tsur']
+        else:
+            self.tsur = None
 
         self.platform = self.avhrr._how['platform']
         self.instrument = self.avhrr._how['instrument']
@@ -319,7 +346,8 @@ class Matchup(object):
                       str(pixel_time) + " " + str(self.obstime))
                 continue
 
-            satdata = get_satellite_data(self.avhrr, self.angles, (row, col))
+            satdata = get_satellite_data((row, col),
+                                         self.avhrr, self.angles, self.ciwv, self.tsur)
 
             cloudcover, ctype_center = get_cloud_cover(
                 self.ctype, (row, col), (ROW_SZ, COL_SZ))
@@ -340,6 +368,10 @@ class Matchup(object):
             for key in satdata:
                 if key in [s.lower() for s in ANGLE_NAMES]:
                     ppsdata.angles[key] = satdata[key]
+                elif key == 'ciwv':
+                    ppsdata.nwp[key] = satdata[key]
+                elif key == 'tsur':
+                    ppsdata.nwp[key] = satdata[key]
                 else:
                     ppsdata.channels[key] = satdata[key]
 
@@ -372,6 +404,8 @@ class Matchup(object):
                     fd_.write(' %6.2f' % item.channels[elem])
                 elif item.angles.has_key(elem) and item.angles[elem] != -999:
                     fd_.write(' %6.2f' % item.angles[elem])
+                elif item.nwp.has_key(elem) and item.nwp[elem] != -999:
+                    fd_.write(' %6.2f' % item.nwp[elem])
                 else:
                     fd_.write(' -999')
 
@@ -388,16 +422,13 @@ def get_scenes(tstart, tend, satellite='npp'):
     tslot = tstart
     while tslot < tend:
         # Find the cloudtype:
-        # matchstr = os.path.join(ROOTDIR,
-        #                         "npp_pps_out/%s/%s/npp_%s_????_?????_satproj_*_cloudtype.h5" % (tslot.strftime('%Y%m'), tslot.strftime('%d'), tslot.strftime('%Y%m%d')))
         matchstr = os.path.join(ROOTDIR,
-                                "export/%s/S_NWC_CT_%s_?????_%sT*_*Z.h5" % (tslot.strftime('%Y%m'), satellite, tslot.strftime('%Y%m%d')))
+                                "export/%s/S_NWC_CT_%s_?????_%sT*_*Z.h5" % (tslot.strftime('%Y%m'),
+                                                                            satellite, tslot.strftime('%Y%m%d')))
         cty_files_aday = glob(matchstr)
         for ctyfile in cty_files_aday:
             fname = os.path.basename(ctyfile).replace('_CT_',
                                                       '_%s_' % instr)
-            # dirname = os.path.dirname(ctyfile).replace('npp_pps_out',
-            #                                           'npp_pps_int')
             dirname = os.path.dirname(ctyfile).replace('export/%s' % tslot.strftime('%Y%m'),
                                                        'import/PPS_data/remapped/%s' % tslot.strftime('%Y%m'))
             viirsfile = os.path.join(dirname, fname)
@@ -408,8 +439,18 @@ def get_scenes(tstart, tend, satellite='npp'):
                                                        'import/ANC_data/remapped/%s' % tslot.strftime('%Y%m'))
             angles_file = os.path.join(dirname, fname)
 
+            fname = os.path.basename(ctyfile).replace('_CT_',
+                                                      '_nwp_ciwv_')
+            dirname = os.path.dirname(ctyfile).replace('export/%s' % tslot.strftime('%Y%m'),
+                                                       'import/NWP_data/remapped/%s' % tslot.strftime('%Y%m'))
+            ciwv_file = os.path.join(dirname, fname)
+            fname = os.path.basename(ctyfile).replace('_CT_',
+                                                      '_nwp_tsur_')
+            tsur_file = os.path.join(dirname, fname)
+
             if os.path.exists(viirsfile):
-                scene_files.append((ctyfile, viirsfile, angles_file))
+                scene_files.append(
+                    (ctyfile, viirsfile, angles_file, ciwv_file, tsur_file))
 
         tslot = tslot + oneday
 
@@ -444,13 +485,13 @@ if __name__ == "__main__":
     for scene in scenes:
         print("Ctype file: %s" % os.path.basename(scene[0]))
         fileread_ok = True
-        for fname in scene:
+        for filename in scene:
             try:
-                h5f = h5py.File(fname, 'r')
+                h5f = h5py.File(filename, 'r')
                 h5f.close()
             except IOError:
                 print(
-                    "Failed opening file! Skipping scene with file: %s" % fname)
+                    "Failed opening file! Skipping scene with file: %s" % filename)
                 fileread_ok = False
                 break
 
@@ -459,7 +500,7 @@ if __name__ == "__main__":
 
         try:
             avhrr_obj = NwcSafPpsData(scene[1])
-        except ValueError, IOError:
+        except (ValueError, IOError):
             print("Skipping scene with file: %s" % scene[1])
             continue
 
@@ -473,8 +514,19 @@ if __name__ == "__main__":
         except IOError:
             print("Failed opening angles file %s" % scene[2])
             continue
+        try:
+            ciwv_obj = NwcSafPpsData(scene[3])
+        except IOError:
+            print("Failed opening nwp ciwv file %s" % scene[3])
+            continue
+        try:
+            tsur_obj = NwcSafPpsData(scene[4])
+        except IOError:
+            print("Failed opening nwp ciwv file %s" % scene[4])
+            continue
 
-        this = Matchup(ctype_obj, avhrr_obj, angles_obj)
+        this = Matchup(
+            ctype_obj, avhrr_obj, angles_obj, ciwv_obj, tsur=tsur_obj)
 
         # Round the time to nearest hour:
         sattime = this.obstime
