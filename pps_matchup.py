@@ -53,12 +53,12 @@ time_thr_swath = timedelta(seconds=(1800 + 100 * 60))
 # ROOTDIR = "/media/Elements/data/pps_v2014_val"
 # ROOTDIR = "/local_disk/data/pps_test"
 # ROOTDIR = "/nobackup/smhid11/sm_ninha/pps/data_osisaf"
-ROOTDIR = "/run/media/a000680/Elements/data/VIIRS_processed_with_ppsv2014patch_plus"
+# ROOTDIR = "/run/media/a000680/Elements/data/VIIRS_processed_with_ppsv2014patch_plus"
 # ROOTDIR = "/nobackup/smhid11/sm_adam/pps/data_osisaf
-# ROOTDIR = "/home/a000680/data/pps_val_v2014"
+ROOTDIR = "/home/a000680/data/pps_val_v2014"
 
 OVERWRITE = True
-SYNOP_DATADIR = "./DataFromDwd"
+SYNOP_DATADIR = "../DataFromDwd"
 # SYNOP_DATADIR =
 # "/data/proj6/saf/adybbroe/satellite_synop_matchup/DataFromDwd"
 
@@ -254,6 +254,9 @@ class Matchup(object):
         else:
             self.tsur = None
 
+        self.points = []
+        self.synops = []
+
         self.platform = self.avhrr._how['platform']
         self.instrument = self.avhrr._how['instrument']
 
@@ -276,14 +279,96 @@ class Matchup(object):
 
         self.matchupdata = []
 
-    def matchup(self, points, dtobj, **kwargs):
+    def get_synop(self):
+        """Get the list of synop data that matches the time of the satellite data"""
+
+        synopfiles = glob(os.path.join(SYNOP_DATADIR, self.obstime.strftime('%Y%m')) +
+                          "/sy_*_%s.qc" % self.obstime.strftime('%Y%m%d'))
+        if self.obstime.hour >= 23:
+            tslot = self.obstime + timedelta(days=1)
+            synopfiles = (synopfiles +
+                          glob(os.path.join(SYNOP_DATADIR, tslot.strftime('%Y%m')) +
+                               "/sy_*_%s.qc" % tslot.strftime('%Y%m%d')))
+        if self.obstime.hour <= 1:
+            tslot = self.obstime - timedelta(days=1)
+            synopfiles = (synopfiles +
+                          glob(os.path.join(SYNOP_DATADIR, tslot.strftime('%Y%m')) +
+                               "/sy_*_%s.qc" % tslot.strftime('%Y%m%d')))
+
+        if len(synopfiles) == 0:
+            raise IOError("No synop files found! " +
+                          "Synop data dir = %s" % SYNOP_DATADIR)
+        print("Synop files considered: " +
+              str([os.path.basename(s) for s in synopfiles]))
+
+        items = []
+        for filename in synopfiles:
+            items.append(get_data(filename))
+
+        self.synops = pd.concat(items, ignore_index=True)
+
+        # Select only those observations that fit within time window:
+        t1_ = self.obstime - time_thr_swath
+        t2_ = self.obstime + time_thr_swath
+        newsynops = self.synops[self.synops['date'] < t2_]
+        self.synops = newsynops[newsynops['date'] > t1_]
+
+    def get_points(self, filename):
+        """Get pre-defined points from ascii file"""
+
+        if len(self.synops) > 0:
+            print(
+                "Synop data already loaded, so ignore list of lon/lat points")
+            return
+
+        datapoints = get_radvaldata(filename)
+        self.points = pd.DataFrame(datapoints)
+
+    def get_row_col(self, lon, lat, corners, kd_tree, satdata_shape, dtobj):
+
+        obs_loc = spherical_geometry.Coordinate(lon, lat)
+
+        is_inside = True
+        try:
+            is_inside = spherical_geometry.point_inside(obs_loc, corners)
+        except ZeroDivisionError:
+            print("date, station, lon,lat: %r (%f,%f)" %
+                  (dtobj.strftime('%Y-%m-%d %H:%M'), lon, lat))
+            raise
+
+        if not is_inside:
+            print("Outside...")
+            return False
+
+        # Find the index of the closest pixel in the satellite data:
+        req_point = np.array([[np.rad2deg(obs_loc.lon),
+                               np.rad2deg(obs_loc.lat)]])
+        dist, kidx = kd_tree.query(req_point, k=1)
+        if dist > 0.1:
+            print("Point too far away from swath...")
+            return False
+
+        row, col = np.unravel_index(kidx[0], satdata_shape)
+        # Now that we have the pixel position in swath, we can calculate the
+        # actual observation time for that pixel, assuming the observation time
+        # at hand applies to the first line:
+        pixel_time = self.obstime + row * LINE_TIME[self.data_type]
+        t1_ = pixel_time - time_thr
+        t2_ = pixel_time + time_thr
+        if dtobj < t1_ or dtobj > t2_:
+            print("Pixel time outside window: " +
+                  str(pixel_time) + " " + str(self.obstime))
+            return False
+
+        tdelta = pixel_time - dtobj
+
+        return row, col, tdelta
+
+    def matchup(self, dtobj, **kwargs):
         """Do the avhrr/viirs - synop matchup and write data to file.
         """
 
-        if 'names' in kwargs:
-            names = kwargs['names']
-        else:
-            names = range(len(points))
+        del kwargs  # Not used atm
 
         geodata = np.vstack((self.avhrr.area.lons.ravel(),
                              self.avhrr.area.lats.ravel())).T
@@ -324,41 +409,53 @@ class Matchup(object):
                 raise ValueError(
                     "After adjusting corners, still something fishy...")
 
-        for point, name in zip(points, names):
-            lon, lat = point
-            obs_loc = spherical_geometry.Coordinate(lon, lat)
+        synops = False
+        if len(self.synops) > 0:
+            iterrows = self.synops.iterrows
+            synops = True
+        elif len(self.points) > 0:
+            iterrows = self.points.iterrows
+            synops = False
+        else:
+            raise NotImplementedError('Either synops or list of ' +
+                                      'lon/lat points should be loaded!')
 
-            is_inside = True
-            try:
-                is_inside = spherical_geometry.point_inside(obs_loc, corners)
-            except ZeroDivisionError:
-                print("date, station, lon,lat: %r (%f,%f)" %
-                      (dtobj.strftime('%Y-%m-%d %H:%M'), lon, lat))
-                raise
+        for pobs in iterrows():
+            synopdata = {}
+            if not synops:
+                lon, lat, station_name = (pobs[1]['lon'],
+                                          pobs[1]['lat'],
+                                          pobs[1]['id'])
+            else:
+                tup = (pobs[1]['lon'], pobs[1]['lat'],
+                       pobs[1]['station'], pobs[1]['date'].to_datetime(),
+                       pobs[1]['total_cloud_cover'],
+                       pobs[1]['nh'],
+                       pobs[1]['cl'],
+                       pobs[1]['cm'],
+                       pobs[1]['ch'],
+                       pobs[1]['vvvv'],
+                       pobs[1]['ww'])
+                lon, lat, station_name, dtobj, total_cloud_cover, nh_, cl_, cm_, ch_, vvvv, ww_ = tup
+                if total_cloud_cover >= 9:
+                    print("Cloud cover invalid in Synop...")
+                    continue
 
-            if not is_inside:
-                print("Outside...")
+                synopdata['station_name'] = station_name
+                synopdata['cloud_cover'] = float(total_cloud_cover) / 8.0
+                synopdata['nh'] = nh_
+                synopdata['cl'] = cl_
+                synopdata['cm'] = cm_
+                synopdata['ch'] = ch_
+                synopdata['vvvv'] = vvvv
+                synopdata['ww'] = ww_
+
+            tup = self.get_row_col(
+                lon, lat, corners, kd_tree, satdata_shape, dtobj)
+            if not tup:
                 continue
 
-            # Find the index of the closest pixel in the satellite data:
-            req_point = np.array([[np.rad2deg(obs_loc.lon),
-                                   np.rad2deg(obs_loc.lat)]])
-            dist, kidx = kd_tree.query(req_point, k=1)
-            if dist > 0.1:
-                print("Point too far away from swath...")
-                continue
-
-            row, col = np.unravel_index(kidx[0], satdata_shape)
-            # Now that we have the pixel position in swath, we can calculate the
-            # actual observation time for that pixel, assuming the observation time
-            # at hand applies to the first line:
-            pixel_time = self.obstime + row * LINE_TIME[self.data_type]
-            t1_ = pixel_time - time_thr
-            t2_ = pixel_time + time_thr
-            if dtobj < t1_ or dtobj > t2_:
-                print("Pixel time outside window: " +
-                      str(pixel_time) + " " + str(self.obstime))
-                continue
+            row, col, tdelta = tup
 
             satdata = get_satellite_data((row, col),
                                          self.avhrr, self.angles, self.ciwv, self.tsur)
@@ -369,12 +466,10 @@ class Matchup(object):
                 print "Cloud cover not available from PPS..."
                 cloudcover = -9
 
-            tdelta = pixel_time - dtobj
-
             ppsdata = SatellitePointData()
             ppsdata.lon = lon
             ppsdata.lat = lat
-            ppsdata.id = name
+            ppsdata.id = station_name
             ppsdata.time = dtobj
             ppsdata.deltatime = tdelta
             ppsdata.cloudcover = cloudcover
@@ -389,7 +484,7 @@ class Matchup(object):
                 else:
                     ppsdata.channels[key] = satdata[key]
 
-            self.matchupdata.append(ppsdata)
+            self.matchupdata.append((ppsdata, synopdata))
 
     def writedata(self):
         """Write the matchup data to file"""
@@ -399,27 +494,40 @@ class Matchup(object):
         fd_.write('# Instrument: ' + str(self.instrument) + '\n')
         headerline = ('# lon, lat, station-id, time, sat-synop time diff, ' +
                       'pps cloud cover, pps cloudtype')
+        if len(self.synops) > 0:
+            headerline = headerline + \
+                ', synop cloud cover, nh, cl, cm, ch, vvvv, ww'
+            synop_vars = ['cloud_cover', 'nh', 'cl', 'cm', 'ch', 'vvvv', 'ww']
+            synop_fmts = ['%4.1f', '%4d', '%4d', '%4d', '%4d', '%6d', '%5d']
+        else:
+            synop_vars = []
+            synop_fmts = []
+
         for field in SAT_FIELDS[self.instrument]:
             headerline = headerline + ', ' + field
         fd_.write(headerline + '\n')
 
         for item in self.matchupdata:
-            line = (item.lon, item.lat,
-                    str(item.id).rjust(7),
-                    item.time.strftime('%Y%m%d%H%M'),
-                    (item.deltatime.seconds +
-                     item.deltatime.days * 24 * 3600) / 60,
-                    item.cloudcover,
-                    item.cloudtype)
+            satdata, synopdata = item
+            line = (satdata.lon, satdata.lat,
+                    str(satdata.id).rjust(7),
+                    satdata.time.strftime('%Y%m%d%H%M'),
+                    (satdata.deltatime.seconds +
+                     satdata.deltatime.days * 24 * 3600) / 60,
+                    satdata.cloudcover,
+                    satdata.cloudtype)
             fd_.write("%6.2f %6.2f %s %s %5.1f %5.2f %3d " % line)
+            for var, fmt in zip(synop_vars, synop_fmts):
+                if var in synopdata:
+                    fd_.write(fmt % synopdata[var] + ' ')
 
             for elem in SAT_FIELDS[self.instrument]:
-                if item.channels.has_key(elem) and item.channels[elem] != -999:
-                    fd_.write(' %6.2f' % item.channels[elem])
-                elif item.angles.has_key(elem) and item.angles[elem] != -999:
-                    fd_.write(' %6.2f' % item.angles[elem])
-                elif item.nwp.has_key(elem) and item.nwp[elem] != -999:
-                    fd_.write(' %6.2f' % item.nwp[elem])
+                if satdata.channels.has_key(elem) and satdata.channels[elem] != -999:
+                    fd_.write(' %6.2f' % satdata.channels[elem])
+                elif satdata.angles.has_key(elem) and satdata.angles[elem] != -999:
+                    fd_.write(' %6.2f' % satdata.angles[elem])
+                elif satdata.nwp.has_key(elem) and satdata.nwp[elem] != -999:
+                    fd_.write(' %6.2f' % satdata.nwp[elem])
                 else:
                     fd_.write(' -999')
 
@@ -458,7 +566,7 @@ def get_scenes(tstart, tend, satellite='npp'):
             fname = os.path.basename(ctyfile).replace('_CT_',
                                                       '_sunsatangles_')
             dirname = os.path.dirname(ctyfile).replace('export',
-                                                       'import/ANC_data')
+                                                       'import/ANC_data/remapped')
             angles_file = os.path.join(dirname, fname)
 
             fname = os.path.basename(ctyfile).replace('_CT_',
@@ -492,14 +600,13 @@ def get_radvaldata(filename):
 # -------------------------------------------------------------------------
 if __name__ == "__main__":
 
-    starttime = datetime(2012, 10, 1, 0, 0)
+    #starttime = datetime(2012, 10, 1, 0, 0)
+    starttime = datetime(2014, 1, 1, 0, 0)
     endtime = datetime(2014, 6, 1, 0, 0)
     scenes = []
     scenes = get_scenes(starttime, endtime, 'npp')
     scenes = scenes + get_scenes(starttime, endtime, 'noaa18')
     scenes = scenes + get_scenes(starttime, endtime, 'noaa19')
-
-    datapoints = get_radvaldata("radval-stlist.txt")
 
     print scenes[0]
     import h5py
@@ -507,13 +614,13 @@ if __name__ == "__main__":
     for scene in scenes:
         print("Ctype file: %s" % os.path.basename(scene[0]))
         fileread_ok = True
-        for filename in scene:
+        for scene_file in scene:
             try:
-                h5f = h5py.File(filename, 'r')
+                h5f = h5py.File(scene_file, 'r')
                 h5f.close()
             except IOError:
                 print(
-                    "Failed opening file! Skipping scene with file: %s" % filename)
+                    "Failed opening file! Skipping scene with file: %s" % scene_file)
                 fileread_ok = False
                 break
 
@@ -560,14 +667,14 @@ if __name__ == "__main__":
                          sattime.month,
                          sattime.day,
                          sattime.hour)
-        this.matchup(np.vstack((datapoints['lon'],
-                                datapoints['lat'])).transpose(),
-                     dtobj, names=datapoints['id'])
+
+        # this.get_points("radval-stlist.txt")
+        this.get_synop()
+
+        this.matchup(dtobj)
         dtobj = datetime(sattime.year,
                          sattime.month,
                          sattime.day,
                          sattime.hour) + timedelta(seconds=3600)
-        this.matchup(np.vstack((datapoints['lon'],
-                                datapoints['lat'])).transpose(),
-                     dtobj, names=datapoints['id'])
+        this.matchup(dtobj)
         this.writedata()

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# Copyright (c) 2014, 2015 Adam.Dybbroe
+# Copyright (c) 2014, 2015, 2016 Adam.Dybbroe
 
 # Author(s):
 
@@ -50,15 +50,14 @@ time_thr = timedelta(seconds=1800)
 #time_thr = timedelta(seconds=3600*6)
 time_thr_swath = timedelta(seconds=(1800 + 100 * 60))
 
-#ROOTDIR = "/data/proj/satval/data"
-#ROOTDIR = "/nobackup/smhid10/sm_kgkar/ppsdata_testv2014_1g"
-#ROOTDIR = "/nobackup/smhid10/sm_shorn/ppsdata_testv2014_1i"
-ROOTDIR = "/data/arkiv/proj/safworks/satval_archieve/data/pps_v2014_val"
+ROOTDIR = "/nobackup/smhid11/sm_ninha/pps/data_osisaf"
+
 
 #SYNOP_DATADIR = "/local_disk/laptop/satellite_synop_matchup/DataFromDwd"
-#SYNOP_DATADIR = "./DataFromDwd"
-SYNOP_DATADIR = "/data/proj6/saf/adybbroe/satellite_synop_matchup/DataFromDwd"
-OUTPUT_DIR = "/local_disk/laptop/satellite_synop_matchup/data"
+SYNOP_DATADIR = "./DataFromDwd"
+# SYNOP_DATADIR = "/data/proj6/saf/adybbroe/satellite_synop_matchup/DataFromDwd"
+# OUTPUT_DIR = "/local_disk/laptop/satellite_synop_matchup/data"
+OUTPUT_DIR = './data'
 
 INSTRUMENT = {'npp': 'viirs', 'noaa18': 'avhrr', 'noaa19': 'avhrr'}
 ANGLE_NAMES = ['SUNZ', 'SATZ', 'SSAZD']
@@ -304,6 +303,10 @@ def matchup(ctype, avhrr, angles):
                )
         lon, lat, station_name, dtobj, total_cloud_cover, nh_, cl_, cm_, ch_, vvvv, ww_ = tup
 
+        if total_cloud_cover >= 9:
+            print("Cloud cover invalid in Synop...")
+            continue
+
         obs_loc = spherical_geometry.Coordinate(lon, lat)
 
         is_inside = True
@@ -320,10 +323,6 @@ def matchup(ctype, avhrr, angles):
 
         if not is_inside:
             # print("Outside...")
-            continue
-
-        if total_cloud_cover >= 9:
-            print("Cloud cover invalid in Synop...")
             continue
 
         # Find the index of the closest pixel in the satellite data:
@@ -432,10 +431,8 @@ def get_scenes(tstart, tend, satellite='npp'):
 # -------------------------------------------------------------------------
 if __name__ == "__main__":
 
-    starttime = datetime(2012, 1, 1, 0, 0)
-    #starttime = datetime(2013, 1, 1, 0, 0)
-    endtime = datetime(2013, 1, 1, 0, 0)
-    #endtime = datetime(2014, 4, 1, 0, 0)
+    starttime = datetime(2012, 5, 1, 0, 0)
+    endtime = datetime(2014, 6, 1, 0, 0)
     scenes = []
     scenes = get_scenes(starttime, endtime, 'npp')
     scenes = scenes + get_scenes(starttime, endtime, 'noaa18')
