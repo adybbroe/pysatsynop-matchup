@@ -54,9 +54,10 @@ time_thr_swath = timedelta(seconds=(1800 + 100 * 60))
 # ROOTDIR = "/local_disk/data/pps_test"
 # ROOTDIR = "/nobackup/smhid11/sm_ninha/pps/data_osisaf"
 ROOTDIR = "/run/media/a000680/Elements/data/VIIRS_processed_with_ppsv2014patch_plus"
-# ROOTDIR = "/nobackup/smhid11/sm_adam/pps/data_osisaf"
+# ROOTDIR = "/nobackup/smhid11/sm_adam/pps/data_osisaf
 # ROOTDIR = "/home/a000680/data/pps_val_v2014"
 
+OVERWRITE = True
 SYNOP_DATADIR = "./DataFromDwd"
 # SYNOP_DATADIR =
 # "/data/proj6/saf/adybbroe/satellite_synop_matchup/DataFromDwd"
@@ -548,6 +549,10 @@ if __name__ == "__main__":
 
         this = Matchup(
             ctype_obj, avhrr_obj, angles_obj, ciwv_obj, tsur=tsur_obj)
+
+        if OVERWRITE and os.path.exists(this.resultfile):
+            print("File exists: %s ...continue" % this.resultfile)
+            continue
 
         # Round the time to nearest hour:
         sattime = this.obstime
