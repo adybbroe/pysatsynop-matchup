@@ -52,13 +52,14 @@ time_thr_swath = timedelta(seconds=(1800 + 100 * 60))
 
 # ROOTDIR = "/media/Elements/data/pps_v2014_val"
 # ROOTDIR = "/local_disk/data/pps_test"
-ROOTDIR = "/nobackup/smhid11/sm_ninha/pps/data_osisaf"
-ROOTDIR = "/run/media/a000680/Elements/data/pps_v2014_val"
+# ROOTDIR = "/nobackup/smhid11/sm_ninha/pps/data_osisaf"
+ROOTDIR = "/run/media/a000680/Elements/data/VIIRS_processed_with_ppsv2014patch_plus"
 # ROOTDIR = "/nobackup/smhid11/sm_adam/pps/data_osisaf"
 # ROOTDIR = "/home/a000680/data/pps_val_v2014"
 
 SYNOP_DATADIR = "./DataFromDwd"
-# SYNOP_DATADIR = "/data/proj6/saf/adybbroe/satellite_synop_matchup/DataFromDwd"
+# SYNOP_DATADIR =
+# "/data/proj6/saf/adybbroe/satellite_synop_matchup/DataFromDwd"
 
 # OUTPUT_DIR = "/local_disk/laptop/satellite_synop_matchup/data"
 OUTPUT_DIR = "./data"
@@ -70,6 +71,17 @@ SAT_FIELDS['viirs'] = ['sunz', 'satz', 'ssazd', 'ciwv', 'tsur', 'm05',
                        'm07', 'm10', 'm12', 'm14', 'm15', 'm16']
 SAT_FIELDS['avhrr'] = ['sunz', 'satz', 'ssazd', 'cwiv', 'tsur', '1',
                        '2', '3a', '3b', 'dummy', '4', '5']
+
+# FILE_PATTERN =
+FILE_PATTERN = "export/{start_month:%Y%m}/S_NWC_{product:s}_{satellite:s}_{orbit:5d}_{start_date:%Y%m%d}T{start_time:%H%M%S}{tenthsec_start:1d}Z_{end_time:%Y%m%dT%H%M%S}{tenthsec_end:1d}Z.h5"
+# FILE_PATTERN = "export/S_NWC_{product:s}_{satellite:s}_{orbit:5d}_{start_date:%Y%m%d}T{start_time:%H%M%S}{tenthsec_start:1d}Z_{end_time:%Y%m%dT%H%M%S}{tenthsec_end:1d}Z.h5"
+
+try:
+    from trollsift import Parser
+    pps_fparser = Parser(FILE_PATTERN)
+except ImportError:
+    print("No trollsift. Try cope without it...")
+    pps_fparser = None
 
 
 class SatellitePointData(object):
@@ -423,9 +435,18 @@ def get_scenes(tstart, tend, satellite='npp'):
     tslot = tstart
     while tslot < tend:
         # Find the cloudtype:
-        matchstr = os.path.join(ROOTDIR,
-                                "export/S_NWC_CT_%s_?????_%sT*_*Z.h5" % (satellite, tslot.strftime('%Y%m%d')))
+        if pps_fparser:
+            matchstr = os.path.join(
+                ROOTDIR, pps_fparser.globify({'product': 'CT',
+                                              'satellite': satellite,
+                                              'start_date': tslot,
+                                              'start_month': tslot}))
+        else:
+            matchstr = os.path.join(ROOTDIR,
+                                    "export/S_NWC_CT_%s_?????_%sT*_*Z.h5" % (satellite, tslot.strftime('%Y%m%d')))
+
         cty_files_aday = glob(matchstr)
+
         for ctyfile in cty_files_aday:
             fname = os.path.basename(ctyfile).replace('_CT_',
                                                       '_%s_' % instr)
@@ -436,7 +457,7 @@ def get_scenes(tstart, tend, satellite='npp'):
             fname = os.path.basename(ctyfile).replace('_CT_',
                                                       '_sunsatangles_')
             dirname = os.path.dirname(ctyfile).replace('export',
-                                                       'import/ANC_data/remapped')
+                                                       'import/ANC_data')
             angles_file = os.path.join(dirname, fname)
 
             fname = os.path.basename(ctyfile).replace('_CT_',
@@ -470,7 +491,7 @@ def get_radvaldata(filename):
 # -------------------------------------------------------------------------
 if __name__ == "__main__":
 
-    starttime = datetime(2012, 5, 1, 0, 0)
+    starttime = datetime(2012, 10, 1, 0, 0)
     endtime = datetime(2014, 6, 1, 0, 0)
     scenes = []
     scenes = get_scenes(starttime, endtime, 'npp')
