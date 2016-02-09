@@ -52,17 +52,13 @@ time_thr_swath = timedelta(seconds=(1800 + 100 * 60))
 
 # ROOTDIR = "/media/Elements/data/pps_v2014_val"
 # ROOTDIR = "/local_disk/data/pps_test"
-# ROOTDIR = "/nobackup/smhid11/sm_ninha/pps/data_osisaf"
+ROOTDIR = "/nobackup/smhid11/sm_ninha/pps/data_osisaf"
 # ROOTDIR = "/run/media/a000680/Elements/data/VIIRS_processed_with_ppsv2014patch_plus"
 # ROOTDIR = "/nobackup/smhid11/sm_adam/pps/data_osisaf
-ROOTDIR = "/home/a000680/data/pps_val_v2014"
+# ROOTDIR = "/home/a000680/data/pps_val_v2014"
 
 OVERWRITE = True
 SYNOP_DATADIR = "../DataFromDwd"
-# SYNOP_DATADIR =
-# "/data/proj6/saf/adybbroe/satellite_synop_matchup/DataFromDwd"
-
-# OUTPUT_DIR = "/local_disk/laptop/satellite_synop_matchup/data"
 OUTPUT_DIR = "./data"
 
 INSTRUMENT = {'npp': 'viirs', 'noaa18': 'avhrr', 'noaa19': 'avhrr'}
@@ -600,8 +596,7 @@ def get_radvaldata(filename):
 # -------------------------------------------------------------------------
 if __name__ == "__main__":
 
-    #starttime = datetime(2012, 10, 1, 0, 0)
-    starttime = datetime(2014, 1, 1, 0, 0)
+    starttime = datetime(2012, 5, 1, 0, 0)
     endtime = datetime(2014, 6, 1, 0, 0)
     scenes = []
     scenes = get_scenes(starttime, endtime, 'npp')
@@ -657,7 +652,7 @@ if __name__ == "__main__":
         this = Matchup(
             ctype_obj, avhrr_obj, angles_obj, ciwv_obj, tsur=tsur_obj)
 
-        if OVERWRITE and os.path.exists(this.resultfile):
+        if not OVERWRITE and os.path.exists(this.resultfile):
             print("File exists: %s ...continue" % this.resultfile)
             continue
 
