@@ -69,16 +69,15 @@ SAT_FIELDS['viirs'] = ['sunz', 'satz', 'ssazd', 'ciwv', 'tsur', 'm05',
 SAT_FIELDS['avhrr'] = ['sunz', 'satz', 'ssazd', 'cwiv', 'tsur', '1',
                        '2', '3a', '3b', 'dummy', '4', '5']
 
-# FILE_PATTERN =
+CTYPE_PATTERN = "S_NWC_CT_{satellite:s}_{orbit:5d}_{start_time:%Y%m%dT%H%M%S}{tenthsec_start:1d}Z_{end_time:%Y%m%dT%H%M%S}{tenthsec_end:1d}Z.h5"
 FILE_PATTERN = "export/{start_month:%Y%m}/S_NWC_{product:s}_{satellite:s}_{orbit:5d}_{start_date:%Y%m%d}T{start_time:%H%M%S}{tenthsec_start:1d}Z_{end_time:%Y%m%dT%H%M%S}{tenthsec_end:1d}Z.h5"
 # FILE_PATTERN = "export/S_NWC_{product:s}_{satellite:s}_{orbit:5d}_{start_date:%Y%m%d}T{start_time:%H%M%S}{tenthsec_start:1d}Z_{end_time:%Y%m%dT%H%M%S}{tenthsec_end:1d}Z.h5"
 
-try:
-    from trollsift import Parser
-    pps_fparser = Parser(FILE_PATTERN)
-except ImportError:
-    print("No trollsift. Try cope without it...")
-    pps_fparser = None
+EPOCH = datetime(1970, 1, 1)
+
+from trollsift import Parser
+pps_fparser = Parser(FILE_PATTERN)
+ctype_parser = Parser(CTYPE_PATTERN)
 
 
 class SatellitePointData(object):
@@ -268,6 +267,13 @@ class Matchup(object):
                           str(self.avhrr._how['instrument']))
 
         self.obstime = self.ctype.info['time']
+        if self.obstime < EPOCH:
+            print(
+                "Observation time proably wrong! Take it from file name instead!")
+            ctypename = os.path.basename(ctype._md['id'])
+            items = ctype_parser.parse(ctypename)
+            self.obstime = items['start_time']
+
         print("Observation time = " + str(self.obstime))
         self.resultfile = os.path.join(
             OUTPUT_DIR, './matchup_%s_%s.txt' % (self.platform,
@@ -292,8 +298,10 @@ class Matchup(object):
                                "/sy_*_%s.qc" % tslot.strftime('%Y%m%d')))
 
         if len(synopfiles) == 0:
-            raise IOError("No synop files found! " +
-                          "Synop data dir = %s" % SYNOP_DATADIR)
+            print("No synop files found! " +
+                  "Synop data dir = %s" % SYNOP_DATADIR)
+            return False
+
         print("Synop files considered: " +
               str([os.path.basename(s) for s in synopfiles]))
 
@@ -308,6 +316,8 @@ class Matchup(object):
         t2_ = self.obstime + time_thr_swath
         newsynops = self.synops[self.synops['date'] < t2_]
         self.synops = newsynops[newsynops['date'] > t1_]
+
+        return True
 
     def get_points(self, filename):
         """Get pre-defined points from ascii file"""
@@ -664,12 +674,11 @@ if __name__ == "__main__":
                          sattime.hour)
 
         # this.get_points("radval-stlist.txt")
-        this.get_synop()
-
-        this.matchup(dtobj)
-        dtobj = datetime(sattime.year,
-                         sattime.month,
-                         sattime.day,
-                         sattime.hour) + timedelta(seconds=3600)
-        this.matchup(dtobj)
-        this.writedata()
+        if this.get_synop():
+            this.matchup(dtobj)
+            dtobj = datetime(sattime.year,
+                             sattime.month,
+                             sattime.day,
+                             sattime.hour) + timedelta(seconds=3600)
+            this.matchup(dtobj)
+            this.writedata()
