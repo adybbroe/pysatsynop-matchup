@@ -65,7 +65,7 @@ INSTRUMENT = {'npp': 'viirs', 'noaa18': 'avhrr', 'noaa19': 'avhrr'}
 ANGLE_NAMES = ['SUNZ', 'SATZ', 'SSAZD']
 SAT_FIELDS = {}
 SAT_FIELDS['viirs'] = ['sunz', 'satz', 'ssazd', 'ciwv', 'tsur', 'm05',
-                       'm07', 'm10', 'm12', 'm14', 'm15', 'm16']
+                       'm07', 'm09', 'm10', 'm11', 'm12', 'm14', 'm15', 'm16']
 SAT_FIELDS['avhrr'] = ['sunz', 'satz', 'ssazd', 'cwiv', 'tsur', '1',
                        '2', '3a', '3b', 'dummy', '4', '5']
 
