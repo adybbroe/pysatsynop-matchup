@@ -151,7 +151,7 @@ def get_satellite_data(point, imagerdata, sunsat_angles, nwp_ciwv, nwp_tsur):
         else:
             retv[dname] = -999
 
-    for idx in range(1, 8):
+    for idx in range(1, 20):
         if hasattr(imagerdata, 'image%.1d' % idx):
             obj = getattr(imagerdata, 'image%.1d' % idx)
             info = getattr(obj, 'info')
