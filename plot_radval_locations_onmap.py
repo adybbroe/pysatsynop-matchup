@@ -53,3 +53,4 @@ if __name__ == "__main__":
     plt.title('Positions of radiation validation stations')
     # plt.show()
     plt.savefig('./radval_onmap.png')
+    plt.close()

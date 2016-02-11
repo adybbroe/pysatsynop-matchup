@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# Copyright (c) 2014, 2015 Adam.Dybbroe
+# Copyright (c) 2014, 2015, 2016 Adam.Dybbroe
 
 # Author(s):
 
@@ -39,9 +39,9 @@ DTYPE_SYNOP = [('lon', 'f8'),
                ('station', '|S5'),
                ('date', object),
                ('delta_t', 'f8'),
-               ('obs', 'f8'),
                ('sat', 'f8'),
                ('pps_ctype', 'f8'),
+               ('obs', 'f8'),
                ('nh', 'i4'),
                ('cl', 'i4'),
                ('cm', 'i4'),
@@ -51,9 +51,13 @@ DTYPE_SYNOP = [('lon', 'f8'),
                ('sunz', 'f8'),
                ('satz', 'f8'),
                ('ssazd', 'f8'),
+               ('ciwv', 'f8'),
+               ('tsur', 'f8'),
                ('r06', 'f8'),
                ('r08', 'f8'),
+               ('r13', 'f8'),
                ('r16', 'f8'),
+               ('r22', 'f8'),
                ('t37', 'f8'),
                ('t85', 'f8'),
                ('t11', 'f8'),
@@ -70,9 +74,13 @@ DTYPE_POINT = [('lon', 'f8'),
                ('sunz', 'f8'),
                ('satz', 'f8'),
                ('ssazd', 'f8'),
+               ('ciwv', 'f8'),
+               ('tsur', 'f8'),
                ('r06', 'f8'),
                ('r08', 'f8'),
+               ('r13', 'f8'),
                ('r16', 'f8'),
+               ('r22', 'f8'),
                ('t37', 'f8'),
                ('t85', 'f8'),
                ('t11', 'f8'),
@@ -100,12 +108,13 @@ class MatchupAnalysis(object):
         else:
             raise IOError("matchup type has to be either 'synop' or 'point'")
 
+        self.data = None
+
     def get_results(self, filenames):
         """Read in all the matchup results"""
 
         items = []
-        for idx, filename in enumerate(filenames):
-            # print filename
+        for dummy, filename in enumerate(filenames):
             try:
                 data = np.genfromtxt(filename, skip_header=3,
                                      converters={self.datetime_colnum: lambda x:
@@ -121,12 +130,32 @@ class MatchupAnalysis(object):
                 pdf = pdf.drop_duplicates()
                 pdf = pdf.dropna()
             except ValueError:
-                pdf = pd.DataFrame(np.array([data]))
-                print filename
+                print(
+                    "Failed on file: %s - Perhaps only one row of data?" % filename)
+                names = [names[0] for names in DTYPE_POINT]
+                dd = {}
+                for var in names:
+                    dd[var] = data[var].item()
+                pdf = pd.DataFrame(columns=names)
+                pdf.loc[len(names)] = dd
 
             items.append(pdf)
 
-        return pd.concat(items, ignore_index=True)
+        self.data = pd.concat(items, ignore_index=True)
+
+    def add_sunzenith(self):
+        """Derive the sun zenith angles and add to data series"""
+
+        from pyorbital import astronomy
+
+        sunz = []
+        for idx in self.data.index:
+
+            sunz.append(astronomy.sun_zenith_angle(self.data.loc[idx, 'date'],
+                                                   self.data.loc[idx, 'lon'],
+                                                   self.data.loc[idx, 'lat']))
+
+        self.data['sunz'] = pd.Series(sunz, index=self.data.index)
 
 
 def geo_filter(pdf, outside=True, areaid='euron1'):
@@ -161,19 +190,20 @@ def geo_filter(pdf, outside=True, areaid='euron1'):
 def sunz_filter(pdf, sunz_range):
     """Filter the data according to the sun zenith angle"""
 
-    from pyorbital import astronomy
-
-    idx_selected = []
-    for idx in pdf.index:
-
-        sunz = astronomy.sun_zenith_angle(pdf.loc[idx, 'date'],
-                                          pdf.loc[idx, 'lon'],
-                                          pdf.loc[idx, 'lat'])
-
-        if sunz > sunz_range[0] and sunz < sunz_range[1]:
-            idx_selected.append(idx)
-
-    return pdf.loc[idx_selected, :]
+    if not 'sunz' in pdf.keys():
+        from pyorbital import astronomy
+        idx_selected = []
+        for idx in pdf.index:
+            sunz = astronomy.sun_zenith_angle(pdf.loc[idx, 'date'],
+                                              pdf.loc[idx, 'lon'],
+                                              pdf.loc[idx, 'lat'])
+            if sunz > sunz_range[0] and sunz < sunz_range[1]:
+                idx_selected.append(idx)
+        return pdf.loc[idx_selected, :]
+    else:
+        pdf = pdf[pdf['sunz'] > sunz_range[0]]
+        pdf = pdf[pdf['sunz'] < sunz_range[01]]
+        return pdf
 
 
 def station_filter(pdf, station_list):
@@ -191,6 +221,7 @@ def station_filter(pdf, station_list):
 def synop_validation(matchups, filename):
     """Perform the Synop validation of the cloud mask"""
 
+    nodata = matchups['sat'] < 0
     # Filter the data so no data contains observations with partly cloudy
     # (3,4,5 octas)
     clmask_obs = np.logical_and(
@@ -198,10 +229,11 @@ def synop_validation(matchups, filename):
     clmask_sat = np.logical_and(
         matchups['sat'] > 5. / 16., matchups['sat'] < 10. / 16.)
 
-    obs_f = np.ma.masked_array(
-        matchups['obs'], mask=np.logical_or(clmask_obs, clmask_sat))
-    sat_f = np.ma.masked_array(
-        matchups['sat'], mask=np.logical_or(clmask_obs, clmask_sat))
+    mask = np.logical_or(clmask_obs, clmask_sat)
+    mask = np.logical_or(mask, nodata)
+
+    obs_f = np.ma.masked_array(matchups['obs'], mask=mask)
+    sat_f = np.ma.masked_array(matchups['sat'], mask=mask)
 
     obs_f_bin = obs_f.compressed() > 5. / 8.
     sat_f_bin = sat_f.compressed() > 5. / 8.
@@ -285,12 +317,12 @@ def hist1d_plot(data, varname, dataset_name, **kwargs):
 # --------------------------------------------------------
 if __name__ == "__main__":
 
-    #filenames = glob('./data/matchup_*txt')
-    filenames = glob('./data/results_n*txt')
+    #names = glob('./data/matchup_*txt')
+    fnames = glob('./data/results_n*txt')
 
     #this = MatchupAnalysis(mtype='point')
     this = MatchupAnalysis(mtype='synop')
-    res = this.get_results(filenames)
+    res = this.get_results(fnames)
 
     res = res[np.isfinite(res['obs'])]
     #res = geo_filter(res, outside=False)
@@ -319,8 +351,8 @@ if __name__ == "__main__":
     plt.savefig('./obs_sat_scatter_night.png')
 
     # Make a map plot of the number of occurences and station locations
-    names = res['station']
-    land_stations = np.unique([s for s in names if s != 'SHIP'])
+    station_names = res['station']
+    land_stations = np.unique([s for s in station_names if s != 'SHIP'])
     land_stations = land_stations[land_stations != 'nan']
     numobs = np.array([len(res[res['station'] == s]) for s in land_stations])
     lons = np.array([res['lon'][res[res['station'] == s].index[0]]
