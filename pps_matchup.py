@@ -441,8 +441,11 @@ class Matchup(object):
                        pobs[1]['cm'],
                        pobs[1]['ch'],
                        pobs[1]['vvvv'],
-                       pobs[1]['ww'])
-                lon, lat, station_name, dtobj, total_cloud_cover, nh_, cl_, cm_, ch_, vvvv, ww_ = tup
+                       pobs[1]['ww'],
+                       pobs[1]['temp'],
+                       pobs[1]['dtemp'],
+                       pobs[1]['pressure'])
+                lon, lat, station_name, dtobj, total_cloud_cover, nh_, cl_, cm_, ch_, vvvv, ww_, temp, dtemp, pressure = tup
                 if total_cloud_cover >= 9:
                     print("Cloud cover invalid in Synop...")
                     continue
@@ -455,6 +458,9 @@ class Matchup(object):
                 synopdata['ch'] = ch_
                 synopdata['vvvv'] = vvvv
                 synopdata['ww'] = ww_
+                synopdata['temp'] = temp
+                synopdata['dtemp'] = dtemp
+                synopdata['pressure'] = pressure
 
             tup = self.get_row_col(
                 lon, lat, corners, kd_tree, satdata_shape, dtobj)
