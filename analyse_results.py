@@ -64,6 +64,33 @@ DTYPE_SYNOP = [('lon', 'f8'),
                ('t12', 'f8'),
                ]
 
+DTYPE_SYNOP_AVHRR = [('lon', 'f8'),
+                     ('lat', 'f8'),
+                     ('station', '|S5'),
+                     ('date', object),
+                     ('delta_t', 'f8'),
+                     ('sat', 'f8'),
+                     ('pps_ctype', 'f8'),
+                     ('obs', 'f8'),
+                     ('nh', 'i4'),
+                     ('cl', 'i4'),
+                     ('cm', 'i4'),
+                     ('ch', 'i4'),
+                     ('vvvv', 'i4'),
+                     ('wv', 'i4'),
+                     ('sunz', 'f8'),
+                     ('satz', 'f8'),
+                     ('ssazd', 'f8'),
+                     ('ciwv', 'f8'),
+                     ('tsur', 'f8'),
+                     ('r06', 'f8'),
+                     ('r08', 'f8'),
+                     ('r16', 'f8'),
+                     ('t37', 'f8'),
+                     ('t11', 'f8'),
+                     ('t12', 'f8'),
+                     ]
+
 DTYPE_POINT = [('lon', 'f8'),
                ('lat', 'f8'),
                ('station', '|S5'),
@@ -86,6 +113,25 @@ DTYPE_POINT = [('lon', 'f8'),
                ('t11', 'f8'),
                ('t12', 'f8'),
                ]
+DTYPE_POINT_AVHRR = [('lon', 'f8'),
+                     ('lat', 'f8'),
+                     ('station', '|S5'),
+                     ('date', object),
+                     ('delta_t', 'f8'),
+                     ('sat', 'f8'),
+                     ('pps_ctype', 'f8'),
+                     ('sunz', 'f8'),
+                     ('satz', 'f8'),
+                     ('ssazd', 'f8'),
+                     ('ciwv', 'f8'),
+                     ('tsur', 'f8'),
+                     ('r06', 'f8'),
+                     ('r08', 'f8'),
+                     ('r16', 'f8'),
+                     ('t37', 'f8'),
+                     ('t11', 'f8'),
+                     ('t12', 'f8'),
+                     ]
 
 
 class MatchupAnalysis(object):
@@ -98,13 +144,13 @@ class MatchupAnalysis(object):
         if not 'mtype' in kwargs or kwargs['mtype'] == 'synop':
             self.synop = True
             self.datetime_colnum = 3
-            self.dtype = DTYPE_SYNOP
+            self.dtype = {'avhrr': DTYPE_SYNOP_AVHRR, 'viirs': DTYPE_SYNOP}
             self.point = False
         elif kwargs['mtype'] == 'point':
             self.synop = False
             self.datetime_colnum = 3
             self.point = True
-            self.dtype = DTYPE_POINT
+            self.dtype = {'avhrr': DTYPE_POINT_AVHRR, 'viirs': DTYPE_POINT}
         else:
             raise IOError("matchup type has to be either 'synop' or 'point'")
 
@@ -112,15 +158,21 @@ class MatchupAnalysis(object):
 
     def get_results(self, filenames):
         """Read in all the matchup results"""
+        import os.path
 
         items = []
         for dummy, filename in enumerate(filenames):
+            satname = os.path.basename(filename).split('_')[1]
+            if satname in ['noaa18', 'noaa19']:
+                instr = 'avhrr'
+            else:
+                instr = 'viirs'
             try:
                 data = np.genfromtxt(filename, skip_header=3,
                                      converters={self.datetime_colnum: lambda x:
                                                  datetime.strptime(x, "%Y%m%d%H%M")},
                                      unpack=True,
-                                     dtype=self.dtype)
+                                     dtype=self.dtype[instr])
             except IndexError:
                 print "File probably empty..."
                 continue
@@ -132,7 +184,7 @@ class MatchupAnalysis(object):
             except ValueError:
                 print(
                     "Failed on file: %s - Perhaps only one row of data?" % filename)
-                names = [names[0] for names in DTYPE_POINT]
+                names = [names[0] for names in DTYPE_POINT[instr]]
                 dd = {}
                 for var in names:
                     dd[var] = data[var].item()
@@ -317,25 +369,27 @@ def hist1d_plot(data, varname, dataset_name, **kwargs):
 # --------------------------------------------------------
 if __name__ == "__main__":
 
-    #names = glob('./data/matchup_*txt')
-    fnames = glob('./data/results_n*txt')
+    fnames = glob('./data/matchup_npp*txt')
+    #fnames = glob('./data/results_n*txt')
 
     #this = MatchupAnalysis(mtype='point')
     this = MatchupAnalysis(mtype='synop')
-    res = this.get_results(fnames)
+    this.get_results(fnames)
+    res = this.data
 
     res = res[np.isfinite(res['obs'])]
     #res = geo_filter(res, outside=False)
     #res = geo_filter(res)
 
-    # res = sunz_filter(res, [0, 80])  # Daytime
-    res = sunz_filter(res, [90, 180])  # Night
+    res = sunz_filter(res, [0, 80])  # Daytime
+    # res = sunz_filter(res, [90, 180])  # Night
     # res = sunz_filter(res, [80, 90])  # Twilight
 
     #hist1d_plot(res, 'obs', 'Observations')
     #hist1d_plot(res, 'sat', 'PPS cloud cover', color='blue')
 
-    synop_validation(res, './ppsval_nightime.txt')
+    #synop_validation(res, './ppsval_nightime.txt')
+    synop_validation(res, './ppsval_daytime.txt')
 
     import matplotlib.pyplot as plt
 
