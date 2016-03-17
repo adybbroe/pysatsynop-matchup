@@ -52,6 +52,7 @@ time_thr_swath = timedelta(seconds=(1800 + 100 * 60))
 
 # ROOTDIR = "/media/Elements/data/pps_v2014_val"
 # ROOTDIR = "/local_disk/data/pps_test"
+# ROOTDIR = "/nobackup/smhid11/sm_ninha/pps/data_osisaf_noaa"
 ROOTDIR = "/nobackup/smhid11/sm_ninha/pps/data_osisaf"
 # ROOTDIR = "/run/media/a000680/Elements/data/VIIRS_processed_with_ppsv2014patch_plus"
 # ROOTDIR = "/nobackup/smhid11/sm_adam/pps/data_osisaf
@@ -507,8 +508,9 @@ class Matchup(object):
         headerline = ('# lon, lat, station-id, time, sat-synop time diff, ' +
                       'pps cloud cover, pps cloudtype')
         if len(self.synops) > 0:
-            headerline = headerline + \
-                ', synop cloud cover, nh, cl, cm, ch, vvvv, ww'
+            headerline = (headerline +
+                          ', synop cloud cover, nh, cl, cm, ch, ' +
+                          'vvvv, ww, temp, dtemp, pressure')
             # synop_vars = ['cloud_cover', 'nh', 'cl', 'cm', 'ch', 'vvvv', 'ww']
             # synop_fmts = ['%4.1f', '%4d', '%4d', '%4d', '%4d', '%6d', '%5d']
             synop_vars = ['cloud_cover', 'nh', 'cl', 'cm', 'ch', 'vvvv', 'ww',
