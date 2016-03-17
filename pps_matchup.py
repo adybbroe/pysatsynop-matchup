@@ -503,8 +503,12 @@ class Matchup(object):
         if len(self.synops) > 0:
             headerline = headerline + \
                 ', synop cloud cover, nh, cl, cm, ch, vvvv, ww'
-            synop_vars = ['cloud_cover', 'nh', 'cl', 'cm', 'ch', 'vvvv', 'ww']
-            synop_fmts = ['%4.1f', '%4d', '%4d', '%4d', '%4d', '%6d', '%5d']
+            # synop_vars = ['cloud_cover', 'nh', 'cl', 'cm', 'ch', 'vvvv', 'ww']
+            # synop_fmts = ['%4.1f', '%4d', '%4d', '%4d', '%4d', '%6d', '%5d']
+            synop_vars = ['cloud_cover', 'nh', 'cl', 'cm', 'ch', 'vvvv', 'ww',
+                          'temp', 'dtemp', 'pressure']
+            synop_fmts = ['%4.1f', '%4d', '%4d', '%4d', '%4d', '%6d', '%5d',
+                          '%4.1f', '%4.1f', '%6.1f']
         else:
             synop_vars = []
             synop_fmts = []
