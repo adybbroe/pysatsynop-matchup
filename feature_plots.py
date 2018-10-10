@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# Copyright (c) 2016 Adam.Dybbroe
+# Copyright (c) 2016, 2017 Adam.Dybbroe
 
 # Author(s):
 
@@ -80,6 +80,8 @@ if __name__ == "__main__":
     ciwv = np.ma.masked_array(ciwv, mask=mask)
 
     import matplotlib.pyplot as plt
+    import matplotlib
+    matplotlib.rcParams.update({'font.size': 16})
 
     plotfile = "./pps_synop_r13_ciwv.png"
     cmap = plt.cm.OrRd
