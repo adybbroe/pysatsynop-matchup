@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-# Copyright (c) 2014, 2015, 2016 Adam.Dybbroe
+# Copyright (c) 2014, 2015, 2016, 2017 Adam.Dybbroe
 
 # Author(s):
 
@@ -47,7 +47,10 @@ DTYPE_SYNOP = [('lon', 'f8'),
                ('cm', 'i4'),
                ('ch', 'i4'),
                ('vvvv', 'i4'),
-               ('wv', 'i4'),
+               ('ww', 'i4'),
+               ('temp', 'f8'),
+               ('dtemp', 'f8'),
+               ('pressure', 'f8'),
                ('sunz', 'f8'),
                ('satz', 'f8'),
                ('ssazd', 'f8'),
@@ -77,7 +80,10 @@ DTYPE_SYNOP_AVHRR = [('lon', 'f8'),
                      ('cm', 'i4'),
                      ('ch', 'i4'),
                      ('vvvv', 'i4'),
-                     ('wv', 'i4'),
+                     ('ww', 'i4'),
+                     ('temp', 'f8'),
+                     ('dtemp', 'f8'),
+                     ('pressure', 'f8'),
                      ('sunz', 'f8'),
                      ('satz', 'f8'),
                      ('ssazd', 'f8'),
@@ -173,6 +179,9 @@ class MatchupAnalysis(object):
                                                  datetime.strptime(x, "%Y%m%d%H%M")},
                                      unpack=True,
                                      dtype=self.dtype[instr])
+                # data = np.genfromtxt(filename, skip_header=3,
+                #                      unpack=True,
+                #                      dtype=np.dtype(self.dtype[instr]))
             except IndexError:
                 print "File probably empty..."
                 continue
@@ -184,7 +193,7 @@ class MatchupAnalysis(object):
             except ValueError:
                 print(
                     "Failed on file: %s - Perhaps only one row of data?" % filename)
-                names = [names[0] for names in DTYPE_POINT[instr]]
+                names = [names[0] for names in self.dtype[instr]]
                 dd = {}
                 for var in names:
                     dd[var] = data[var].item()
